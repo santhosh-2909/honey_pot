@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Header, HTTPException
-import os
+from app.auth import verify_api_key
+from app.detector import detect_scam
+from app.agent import agent_reply
+from app.memory import store_message
 
-app = FastAPI(title="Agentic Honeypot API")
-
-API_KEY = os.getenv("HONEY_API_KEY")
+app = FastAPI()
 
 @app.post("/honeypot/message")
 async def handle_message(
@@ -11,23 +12,26 @@ async def handle_message(
     x_api_key: str = Header(None)
 ):
     # 🔐 API KEY CHECK
-    if not x_api_key or x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+    verify_api_key(x_api_key)
 
     session_id = payload.get("sessionId")
     message = payload.get("message", {}).get("text", "")
+    history = payload.get("conversationHistory", [])
 
-    # 🧠 Simple scam detection (extend later)
-    scam_keywords = ["urgent", "verify", "account", "blocked", "prize", "won"]
-    scam_detected = any(word in message.lower() for word in scam_keywords)
+    if not session_id or not message:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    store_message(session_id, message)
+
+    scam_detected = detect_scam(message)
 
     if scam_detected:
-        reply = "Why are you asking for this? Can you explain more?"
+        reply = agent_reply(session_id, history)
     else:
         reply = "Okay, noted."
 
     return {
-        "status": "success",
         "scamDetected": scam_detected,
-        "reply": reply
+        "reply": reply,
+        "sessionId": session_id
     }
