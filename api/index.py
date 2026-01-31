@@ -1,37 +1,31 @@
 from fastapi import FastAPI, Header, HTTPException
-from app.auth import verify_api_key
-from app.detector import detect_scam
-from app.agent import agent_reply
-from app.memory import store_message
 
 app = FastAPI()
 
+API_KEY = "HACKATHON_SECRET_KEY"
+
+@app.get("/")
+def root():
+    return {"status": "Agentic Honeypot API is live"}
+
 @app.post("/honeypot/message")
-async def handle_message(
+def honeypot_message(
     payload: dict,
     x_api_key: str = Header(None)
 ):
-    # 🔐 API KEY CHECK
-    verify_api_key(x_api_key)
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
-    session_id = payload.get("sessionId")
-    message = payload.get("message", {}).get("text", "")
-    history = payload.get("conversationHistory", [])
+    text = payload["message"]["text"]
 
-    if not session_id or not message:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-
-    store_message(session_id, message)
-
-    scam_detected = detect_scam(message)
-
-    if scam_detected:
-        reply = agent_reply(session_id, history)
-    else:
-        reply = "Okay, noted."
+    scam_detected = any(word in text.lower() for word in ["prize", "click", "win", "otp"])
 
     return {
-        "scamDetected": scam_detected,
-        "reply": reply,
-        "sessionId": session_id
+        "scam_detected": scam_detected,
+        "agent_reply": "Thanks, I will check and get back to you.",
+        "extracted_intel": {
+            "urls": [],
+            "upi_ids": [],
+            "bank_accounts": []
+        }
     }
